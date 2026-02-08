@@ -9,6 +9,9 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
 import { useStore } from '@/store/useStore';
+import { CategoryListEditor } from '@/components/profile/CategoryListEditor';
+import { ImageUploader } from '@/components/profile/ImageUploader';
+import { ColorPaletteEditor } from '@/components/profile/ColorPaletteEditor';
 
 interface BasicInfoFormData {
   username: string;
@@ -23,7 +26,7 @@ interface BasicInfoFormData {
 
 export function BasicInfoForm() {
   const router = useRouter();
-  const { setUsername, setRawWikitext } = useStore();
+  const { setUsername, setRawWikitext, categories, palette } = useStore();
   
   const [formData, setFormData] = useState<BasicInfoFormData>({
     username: '',
@@ -68,12 +71,20 @@ export function BasicInfoForm() {
     setApiError(null);
 
     try {
+      // Merge basic info with profile creation data (categories, palette)
+      // Note: images are frontend-only previews and not included in generation
+      const payload = {
+        ...formData,
+        categories,
+        palette,
+      };
+
       const response = await fetch('/api/generate-profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -189,6 +200,24 @@ export function BasicInfoForm() {
           rows={4}
           disabled={isGenerating}
         />
+
+        {/* Category editor */}
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Categories / Sections</h3>
+          <CategoryListEditor />
+        </div>
+
+        {/* Image uploader */}
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Profile Images</h3>
+          <ImageUploader />
+        </div>
+
+        {/* Color palette */}
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Color Palette</h3>
+          <ColorPaletteEditor />
+        </div>
 
         <Button
           onClick={handleGenerate}

@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+interface CategoryPayload {
+  id?: string;
+  label: string;
+  description?: string;
+}
+
+interface ImagePayload {
+  url?: string;
+  caption?: string;
+}
+
+interface PalettePayload {
+  primary?: string;
+  accent?: string;
+  background?: string;
+  text?: string;
+}
+
 interface ProfileData {
   username: string;
   realName?: string;
@@ -10,6 +28,9 @@ interface ProfileData {
   aboutMe?: string;
   occupation?: string;
   joinYear?: string;
+  categories?: CategoryPayload[];
+  images?: ImagePayload[];
+  palette?: PalettePayload;
 }
 
 const SYSTEM_PROMPT = `You are an expert Wikimedia markup generator. Generate a professional user profile page in MediaWiki wikitext format based.Always Add beautiful styling to it.
@@ -134,6 +155,25 @@ function buildUserPrompt(data: ProfileData): string {
     parts.push(`About Me: ${data.aboutMe}`);
   }
 
+  // Include categories and images in the prompt
+  if (data.categories && data.categories.length > 0) {
+    parts.push('Categories/Sections:');
+    data.categories.forEach((c, idx) => {
+      parts.push(`- ${c.label}: ${c.description || ''}`);
+    });
+  }
+
+  if (data.images && data.images.length > 0) {
+    parts.push('Images:');
+    data.images.forEach((img, idx) => {
+      parts.push(`- ${img.url} caption: ${img.caption || ''}`);
+    });
+  }
+
+  if (data.palette) {
+    parts.push(`Palette: primary=${data.palette.primary || '#0057B7'}, accent=${data.palette.accent || '#e3f2fd'}, background=${data.palette.background || '#ffffff'}, text=${data.palette.text || '#202122'}`);
+  }
+
   parts.push('');
   parts.push('Create a visually appealing profile with:');
   parts.push('- A styled infobox/userbox on the right with user details');
@@ -148,11 +188,13 @@ function buildUserPrompt(data: ProfileData): string {
 
 function generateFallbackMarkup(data: ProfileData): string {
   const sections: string[] = [];
+  const primary = data.palette?.primary || '#0057B7';
+  const accent = data.palette?.accent || '#e3f2fd';
 
   // Header with styled user info box
-  sections.push(`{| class="wikitable" style="float:right; margin-left:1em; width:280px; border:2px solid #0057B7;"`);
+  sections.push(`{| class="wikitable" style="float:right; margin-left:1em; width:280px; border:2px solid ${primary};"`);
   sections.push(`|-`);
-  sections.push(`! colspan="2" style="background:#0057B7; color:white; font-size:1.2em; padding:10px;" | ${data.username || 'User'}`);
+  sections.push(`! colspan="2" style="background:${primary}; color:white; font-size:1.2em; padding:10px;" | ${data.username || 'User'}`);
   
   if (data.realName) {
     sections.push(`|-`);
@@ -182,7 +224,7 @@ function generateFallbackMarkup(data: ProfileData): string {
   sections.push('');
 
   // Welcome message
-  sections.push(`<div style="font-size:1.1em; color:#333;">`);
+  sections.push(`<div style="font-size:1.1em; color:${data.palette?.text || '#333'};">`);
   sections.push(`'''Welcome to my user page!''' I am an active contributor to the Wikimedia projects.`);
   sections.push(`</div>`);
   sections.push('');
@@ -190,7 +232,7 @@ function generateFallbackMarkup(data: ProfileData): string {
   // About Me section
   if (data.aboutMe) {
     sections.push(`== About me ==`);
-    sections.push(`<div style="background:#f8f9fa; padding:15px; border-radius:8px; border-left:4px solid #0057B7;">`);
+    sections.push(`<div style="background:${accent}; padding:15px; border-radius:8px; border-left:4px solid ${primary};">`);
     sections.push(data.aboutMe);
     sections.push(`</div>`);
     sections.push('');
@@ -221,10 +263,37 @@ function generateFallbackMarkup(data: ProfileData): string {
     sections.push(`<div style="display:flex; flex-wrap:wrap; gap:8px;">`);
     const interestList = data.interests.split(',').map(i => i.trim()).filter(Boolean);
     interestList.forEach(interest => {
-      sections.push(`<span style="background:#e3f2fd; color:#0057B7; padding:5px 12px; border-radius:15px; font-size:0.9em;">{{·}} ${interest}</span>`);
+      sections.push(`<span style="background:${accent}; color:${primary}; padding:5px 12px; border-radius:15px; font-size:0.9em;">{{·}} ${interest}</span>`);
     });
     sections.push(`</div>`);
     sections.push('');
+  }
+
+  // Images - insert full-width images under a Images section
+  if (data.images && data.images.length > 0) {
+    sections.push(`== Images ==`);
+    data.images.forEach(img => {
+      if (img.url) {
+        const cap = img.caption ? ` | ${img.caption}` : '';
+        // Use external URL as <img> to ensure the preview can render
+        sections.push(`<div style="margin-bottom:8px;">`);
+        sections.push(`<img src="${img.url}" alt="${img.caption || ''}" style="max-width:100%; border-radius:6px;" />`);
+        if (img.caption) sections.push(`<div style="font-size:0.9em; color:${data.palette?.text || '#444'};">${img.caption}</div>`);
+        sections.push(`</div>`);
+      }
+    });
+    sections.push('');
+  }
+
+  // Categories / sections
+  if (data.categories && data.categories.length > 0) {
+    data.categories.forEach(c => {
+      sections.push(`== ${c.label} ==`);
+      if (c.description) {
+        sections.push(c.description);
+        sections.push('');
+      }
+    });
   }
 
   // Contact section
@@ -235,10 +304,17 @@ function generateFallbackMarkup(data: ProfileData): string {
   sections.push(`|}`);
   sections.push('');
 
-  // Categories
+  // Footer categories - include generic and user-provided labels as categories
   sections.push(`[[Category:Wikipedians]]`);
   if (data.location) {
     sections.push(`[[Category:Wikipedians in ${data.location.split(',')[0].trim()}]]`);
+  }
+  if (data.categories) {
+    data.categories.forEach(c => {
+      // sanitize label for category (simple replace)
+      const sanitized = c.label.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
+      if (sanitized) sections.push(`[[Category:${sanitized}]]`);
+    });
   }
 
   return sections.join('\n');
