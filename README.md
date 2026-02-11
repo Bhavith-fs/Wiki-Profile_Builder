@@ -1,4 +1,4 @@
-<h1 align="center">🌐 TharangRepo – Wiki Profile Builder</h1>
+<h1 align="center">🌐  Wiki Profile Builder</h1>
 
 <div align="center">
 
